@@ -11,7 +11,7 @@ Metadata:
 
 Globals:
   Function:
-    Handler: index.handler
+    Handler: index.lambdaHandler
     Runtime: nodejs14.x
 
 Resources:
@@ -145,6 +145,7 @@ Resources:
                 - 'dynamoDb:GetItem'
                 - 'dynamoDb:DeleteItem'
                 - 'dynamoDb:Query'
+                - 'dynamodb:Scan'
               Resource:
                 - !GetAtt ConnectionsTable.Arn
 

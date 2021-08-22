@@ -1,4 +1,4 @@
-import AWS from 'aws-sdk';
+const AWS = require('aws-sdk');
 
 const CONNECT_EVENT_TYPE = 'CONNECT';
 const DISCONNECT_EVENT_TYPE = 'DISCONNECT';
@@ -34,15 +34,17 @@ async function sendMessagesToConnection(amazonGatewayManagementAPI, connectionId
   }
 }
 
-async function sendMessageToRoom(amazonGatewayManagementAPI, sourceConnectionId, message) {
-  console.log('sendMessageToRoom', sourceConnectionId, message);
-
-  const connectionData = await docClient.get({
+async function sendMessageToRoom(amazonGatewayManagementAPI, sourceConnectionId, data) {
+  console.log('sendMessageToRoom', sourceConnectionId, data);
+  const connectionData = await docClient.scan({
     TableName: CONNECTIONS_TABLE,
+    FilterExpression: 'connectionId <> :id',
+    ExpressionAttributeValues: {
+      ":id": sourceConnectionId
+    }
   }).promise();
-
   await Promise.all(
-    connectionData.Items.map(async ({ connectionId }) => sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, message)),
+    connectionData.Items.map(async ({ connectionId }) => sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, data)),
   );
 }
 
@@ -59,21 +61,26 @@ async function initConnection(connectionId) {
 async function processMessage(amazonGatewayManagementAPI, connectionId, body) {
   console.log('processMessage', connectionId, body);
 
-  const message = JSON.parse(body);
-  message.timestamp = Date.now();
-  const { action } = message;
-  delete message.action;
+  const { data } = JSON.parse(body);
+  const { username, type } = data;
 
-  switch (action) {
-    case 'message':
-      await sendMessageToRoom(amazonGatewayManagementAPI, connectionId, message);
+  switch (type) {
+    case 'contentchange':
+      await sendMessageToRoom(amazonGatewayManagementAPI, connectionId, data);
       break;
-    case 'init':
+    case 'userevent':
       await initConnection(connectionId);
-      await sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, '');
+      await sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, Object.assign({ ...data }, {
+        users: [
+          {
+            username: username,
+            randomColor: "navy"
+          }
+        ]
+      }));
       break;
     default:
-      console.log(`Error: unknown action ${action}`);
+      console.log(`Error: unknown action ${type}`);
   }
 }
 
@@ -102,6 +109,8 @@ exports.lambdaHandler = async (event, context) => {
       await processMessage(amazonGatewayManagementApi, connectionId, event.body);
       break;
     default:
-      console.log(`Error: unknown event type ${eventType}`);
+      console.error(`Error: unknown event type ${eventType}`);
   }
+
+  return { statusCode: 200, body: 'Connected.' };
 };
