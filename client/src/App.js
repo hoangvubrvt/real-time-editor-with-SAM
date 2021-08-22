@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { w3cwebsocket as W3CWebSocket } from "websocket";
 import Identicon from 'react-identicons';
 import {
   UncontrolledTooltip
@@ -11,23 +12,57 @@ import Header from "./components/header";
 import Login from "./components/login";
 
 const contentDefaultMessage = "Start writing your document here";
+const client = new W3CWebSocket('wss://9ftdj3fh5l.execute-api.ap-southeast-1.amazonaws.com/dev');
 
 const App = () => {
   const [currentUsers, setCurrentUsers] = useState([]);
-  const [userActivity] = useState([]);
+  const [userActivity, setUserActivity] = useState([]);
   const [username, setUserName] = useState();
   const [text, setText] = useState(undefined);
 
   const logInUser = (loginUserName) => {
     setUserName(loginUserName);
-    setCurrentUsers([{
-      username: loginUserName,
-      randomColor: "aquamarine"
-    }]);
+    const data = JSON.stringify({
+      data: {
+        type: 'userevent',
+        username: loginUserName
+      }
+    });
+    client.send(data);
   };
 
+  useEffect(() => {
+    console.log("use effect");
+    client.onopen = () => {
+      console.log('WebSocket Client Connected');
+    };
+
+    client.onmessage = (message) => {
+      console.log("on message ", message);
+      const dataFromServer = JSON.parse(message.data);
+      console.log("dataFromServer ", dataFromServer);
+
+      if (dataFromServer.type === "userevent") {
+        const { users } = dataFromServer;
+        setCurrentUsers(users);
+      } else if (dataFromServer.type === 'contentchange') {
+        setText(dataFromServer.content || contentDefaultMessage);
+      }
+
+      setUserActivity(dataFromServer.userActivity || []);
+    };
+  }, []);
+
   const onEditorStateChange = (editorText) => {
-    setText(editorText);
+    if (editorText !== '') {
+      client.send(JSON.stringify({
+        data: {
+          type: "contentchange",
+          username,
+          content: editorText
+        }
+      }));
+    }
   };
 
   const showEditorSection = () => (
