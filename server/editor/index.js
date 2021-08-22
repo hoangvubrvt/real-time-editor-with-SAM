@@ -18,12 +18,12 @@ async function deleteConnection(connectionId) {
   }).promise();
 }
 
-async function sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, message) {
-  console.log('sendMessagesToConnection', connectionId, message);
+async function sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, data) {
+  console.log('sendMessagesToConnection', connectionId, data);
   try {
     return amazonGatewayManagementAPI.postToConnection({
       ConnectionId: connectionId,
-      Data: JSON.stringify(message),
+      Data: JSON.stringify(data),
     }).promise();
   } catch (err) {
     if (err.statusCode === 410) {
@@ -32,6 +32,24 @@ async function sendMessagesToConnection(amazonGatewayManagementAPI, connectionId
 
     throw err;
   }
+}
+
+function getUsersFromItems(items, currentUser = '') {
+  const users = items.map(({ username }) => {
+    return {
+      username,
+      randomColor: "navy"
+    }
+  });
+
+  if(currentUser) {
+    users.push({
+      username: currentUser,
+      randomColor: "navy"
+    })
+  }
+
+  return users
 }
 
 async function sendMessageToRoom(amazonGatewayManagementAPI, sourceConnectionId, data) {
@@ -43,19 +61,29 @@ async function sendMessageToRoom(amazonGatewayManagementAPI, sourceConnectionId,
       ":id": sourceConnectionId
     }
   }).promise();
+
   await Promise.all(
-    connectionData.Items.map(async ({ connectionId }) => sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, data)),
+    connectionData.Items.map(async ({ connectionId }) => sendMessagesToConnection(
+        amazonGatewayManagementAPI,
+        connectionId,
+        data
+    )),
   );
 }
 
-async function initConnection(connectionId) {
+async function initConnection(connectionId, username) {
   console.log('initConnection', connectionId);
   await docClient.put({
     TableName: CONNECTIONS_TABLE,
     Item: {
       connectionId,
+      username
     },
   }).promise();
+
+  return await docClient.scan({
+    TableName: CONNECTIONS_TABLE
+  }).promise()
 }
 
 async function processMessage(amazonGatewayManagementAPI, connectionId, body) {
@@ -69,15 +97,12 @@ async function processMessage(amazonGatewayManagementAPI, connectionId, body) {
       await sendMessageToRoom(amazonGatewayManagementAPI, connectionId, data);
       break;
     case 'userevent':
-      await initConnection(connectionId);
-      await sendMessagesToConnection(amazonGatewayManagementAPI, connectionId, Object.assign({ ...data }, {
-        users: [
-          {
-            username: username,
-            randomColor: "navy"
-          }
-        ]
-      }));
+      const userItems = await initConnection(connectionId, username);
+      const sendData = Object.assign({ ...data }, {
+        users: getUsersFromItems(userItems.Items)
+      });
+      const sendDataFunc = userItems.Items.map( async ({ connectionId }) => sendMessagesToConnection(amazonGatewayManagementAPI, connectionId,sendData));
+      await Promise.all(sendDataFunc)
       break;
     default:
       console.log(`Error: unknown action ${type}`);

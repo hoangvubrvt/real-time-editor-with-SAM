@@ -123,6 +123,8 @@ Resources:
       AttributeDefinitions:
         - AttributeName: 'connectionId'
           AttributeType: 'S'
+        - AttributeName: 'username'
+          AttributeType: 'S'
       KeySchema:
         - AttributeName: 'connectionId'
           KeyType: 'HASH'
