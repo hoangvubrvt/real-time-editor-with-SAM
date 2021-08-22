@@ -1,0 +1,164 @@
+AWSTemplateFormatVersion : '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+
+Metadata:
+  AWS::ServerlessRepo::Application:
+    Name: "real-time-editor"
+    Description: "A simple real-time editor page."
+    Author: "Vu Hoang"
+    Labels: ['real-time-editor']
+    SemanticVersion: 0.0.1
+
+Globals:
+  Function:
+    Handler: index.handler
+    Runtime: nodejs14.x
+
+Resources:
+
+  RealTimeTextEditorWebSocket:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: RealTimeTextEditorWebSocket
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: "$request.body.action"
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      RouteKey: $connect
+      AuthorizationType: NONE
+      OperationName: ConnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref ConnectInteg
+
+  ConnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      Description: Connct Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RealTimeEditorFunction.Arn}/invocations
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      OperationName: DisconnectRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DisconnectInteg
+
+  DisconnectInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      Description: Disconnect Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RealTimeEditorFunction.Arn}/invocations
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      RouteKey: "$default"
+      AuthorizationType: NONE
+      OperationName: DefaultRoute
+      Target: !Join
+        - '/'
+        - - 'integrations'
+          - !Ref DefaultInteg
+
+  DefaultInteg:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+      Description: Default Integration
+      IntegrationType: AWS_PROXY
+      IntegrationUri:
+        Fn::Sub:
+          arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${RealTimeEditorFunction.Arn}/invocations
+
+  Deployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    DependsOn:
+      - ConnectRoute
+      - DefaultRoute
+      - DisconnectRoute
+    Properties:
+      ApiId: !Ref RealTimeTextEditorWebSocket
+
+  Stage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: dev
+      Description: dev stage
+      DeploymentId: !Ref Deployment
+      ApiId: !Ref RealTimeTextEditorWebSocket
+
+  RealtimeTextEditorPermission:
+    Type: AWS::Lambda::Permission
+    DependsOn:
+      - RealTimeTextEditorWebSocket
+      - RealTimeEditorFunction
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref RealTimeEditorFunction
+      Principal: apigateway.amazonaws.com
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: 'PAY_PER_REQUEST'
+      AttributeDefinitions:
+        - AttributeName: 'connectionId'
+          AttributeType: 'S'
+      KeySchema:
+        - AttributeName: 'connectionId'
+          KeyType: 'HASH'
+
+  RealTimeEditorFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: ./editor/
+      Timeout: 30
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - 'execute-api:ManageConnections'
+              Resource:
+                - 'arn:aws:execute-api:*:*:*/@connections/*'
+            - Effect: Allow
+              Action:
+                - 'dynamoDb:PutItem'
+                - 'dynamoDb:GetItem'
+                - 'dynamoDb:DeleteItem'
+                - 'dynamoDb:Query'
+              Resource:
+                - !GetAtt ConnectionsTable.Arn
+
+      Environment:
+        Variables:
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
+
+Outputs:
+  PositiveChatFunction:
+    Description: "Real time text-editor Lambda Function ARN"
+    Value: !GetAtt RealTimeEditorFunction.Arn
+  PositiveChatFunctionIamRole:
+    Description: "Implicit IAM Role created for Real time text-editor function"
+    Value: !GetAtt RealTimeEditorFunction.Arn
+  WebSocketURI:
+    Description: "The WSS Protocol URI to connect to"
+    Value: !Sub "wss://${RealTimeTextEditorWebSocket}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
