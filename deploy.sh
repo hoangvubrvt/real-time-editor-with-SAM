@@ -1,0 +1,13 @@
+#!/bin/bash
+set -e
+USAGE="Usage: $0 {PACKAGES_BUCKET} {WWW_BUCKET} {AWS_PROFILE}"
+
+PACKAGES_BUCKET=${1?$USAGE}
+WWW_BUCKET=${2?$USAGE}
+AWS_PROFILE=${3?$USAGE}
+
+./deploy_be.sh $PACKAGES_BUCKET $AWS_PROFILE
+
+./deploy_fe.sh $AWS_PROFILE $WWW_BUCKET
+
+echo "Finished!";

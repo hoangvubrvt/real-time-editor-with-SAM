@@ -123,8 +123,6 @@ Resources:
       AttributeDefinitions:
         - AttributeName: 'connectionId'
           AttributeType: 'S'
-        - AttributeName: 'username'
-          AttributeType: 'S'
       KeySchema:
         - AttributeName: 'connectionId'
           KeyType: 'HASH'
@@ -132,7 +130,7 @@ Resources:
   RealTimeEditorFunction:
     Type: AWS::Serverless::Function
     Properties:
-      CodeUri: ./editor/
+      CodeUri: ./server/editor
       Timeout: 30
       Policies:
         - Statement:

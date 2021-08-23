@@ -12,13 +12,13 @@ import Header from "./components/header";
 import Login from "./components/login";
 
 const contentDefaultMessage = "Start writing your document here";
-const client = new W3CWebSocket('wss://9ftdj3fh5l.execute-api.ap-southeast-1.amazonaws.com/dev');
 
 const App = () => {
   const [currentUsers, setCurrentUsers] = useState([]);
   const [userActivity, setUserActivity] = useState([]);
   const [username, setUserName] = useState();
-  const [text, setText] = useState(undefined);
+  const [text, setText] = useState();
+  const [client, setClient] = useState(undefined);
 
   const logInUser = (loginUserName) => {
     setUserName(loginUserName);
@@ -32,25 +32,37 @@ const App = () => {
   };
 
   useEffect(() => {
-    console.log("use effect");
+    if (!client) return;
+
     client.onopen = () => {
       console.log('WebSocket Client Connected');
     };
 
     client.onmessage = (message) => {
-      console.log("on message ", message);
       const dataFromServer = JSON.parse(message.data);
-      console.log("dataFromServer ", dataFromServer);
-
       if (dataFromServer.type === "userevent") {
         const { users } = dataFromServer;
-        setCurrentUsers(users);
+        const editedUsers = users.map((user, index) => ({
+          ...user,
+          id: `id_${index}`
+        }));
+        setCurrentUsers(editedUsers);
       } else if (dataFromServer.type === 'contentchange') {
         setText(dataFromServer.content || contentDefaultMessage);
       }
 
       setUserActivity(dataFromServer.userActivity || []);
     };
+  }, [client]);
+
+  useEffect(() => {
+    const getWSSUri = async () => {
+      const response = await fetch('./wss-uri.txt');
+      const wssUrl = await response.text();
+      setClient(new W3CWebSocket(wssUrl));
+    };
+
+    getWSSUri();
   }, []);
 
   const onEditorStateChange = (editorText) => {
@@ -71,10 +83,10 @@ const App = () => {
         <div className="currentusers">
           {currentUsers.map((user) => (
             <>
-              <span id={user.username} className="userInfo" key={user.username}>
+              <span id={user.id} className="userInfo" key={user.id}>
                 <Identicon className="account__avatar" style={{ backgroundColor: user.randomColor }} size={40} string={user.username} />
               </span>
-              <UncontrolledTooltip placement="top" target={user.username}>
+              <UncontrolledTooltip placement="top" target={user.id}>
                 {user.username}
               </UncontrolledTooltip>
             </>
@@ -100,7 +112,7 @@ const App = () => {
     </div>
   );
 
-  return (
+  const renderContent = () => (
     <>
       <Header />
       <div className="container-fluid">
@@ -108,6 +120,8 @@ const App = () => {
       </div>
     </>
   );
+
+  return client ? renderContent() : (<></>);
 };
 
 export default App;
