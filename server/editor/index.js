@@ -98,7 +98,7 @@ async function processMessage(amazonGatewayManagementAPI, connectionId, body) {
       break;
     case 'userevent':
       const userItems = await initConnection(connectionId, username);
-      const sendData = Object.assign({ ...data }, {
+      const sendData = Object.assign(data, {
         users: getUsersFromItems(userItems.Items)
       });
       const sendDataFunc = userItems.Items.map( async ({ connectionId }) => sendMessagesToConnection(amazonGatewayManagementAPI, connectionId,sendData));
